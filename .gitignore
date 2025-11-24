@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.env/
+
+# Environment
+.env
+
+# Google API Keys / Secret Keys
+*.json
+
+# Outputs (generated files)
+outputs/
+inputs/
+
+# Model weights or checkpoints (lama)
+lama_env/
+lama/
+
+# OS files
+.DS_Store
+Thumbs.db
