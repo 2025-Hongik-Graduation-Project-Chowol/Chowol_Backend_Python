@@ -4,7 +4,7 @@ import os
 from routes.font_router import font_bp
 load_dotenv()
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "stoked-champion-477005-p3-3051b6933c4f.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ec2-user/Chowol_Backend_Python/stoked-champion-477005-p3-3051b6933c4f.json"
 
 from routes.translate_router import translate_bp 
 from routes.inpaint_router import inpaint_bp
