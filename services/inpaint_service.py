@@ -8,23 +8,26 @@ import boto3
 import shutil
 import time
 import random
-import string
 from dotenv import load_dotenv
+
 load_dotenv()
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-LAMA_DIR = os.path.join(BASE_DIR, "lama")
-if LAMA_DIR not in sys.path:
-    sys.path.insert(0, LAMA_DIR)
+# LaMa 디렉토리 (EC2 구조 기반)
+LAMA_DIR = "/home/ec2-user/lama-server/lama"
+PREDICT_PY = f"{LAMA_DIR}/bin/predict.py"
 
-MODEL_PATH = os.path.join(LAMA_DIR, "big-lama", "models")
+# 모델 경로
+MODEL_PATH = f"{LAMA_DIR}/big-lama/models"
 
-INPUT_DIR = os.path.join(BASE_DIR, "inputs")
-OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
+# 입력/출력 경로
+INPUT_DIR = "/home/ec2-user/lama-server/input"
+OUTPUT_DIR = "/home/ec2-user/lama-server/output"
+
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# S3 설정
 S3_BUCKET = os.environ.get("S3_BUCKET")
 AWS_REGION = os.environ.get("AWS_REGION", "ap-northeast-2")
 
@@ -42,7 +45,6 @@ def extract_s3_key(url: str):
     return key
 
 
-# presigned 생성
 def create_presigned(key: str):
     return s3.generate_presigned_url(
         ClientMethod="get_object",
@@ -77,33 +79,36 @@ def cleanup(path):
 
 def inpaint_image(image_url: str, mask_url: str) -> str:
 
+    # S3 key 추출
     image_key = extract_s3_key(image_url)
     mask_key = extract_s3_key(mask_url)
 
+    # 기본 파일명 정의
     original_filename = image_key.split("/")[-1]
     base = original_filename.rsplit(".", 1)[0]
     output_filename = f"{base}_inpaint.png"
 
+    # 작업 디렉토리 생성
     temp = make_temp()
     workdir = os.path.join(INPUT_DIR, temp)
     outdir = os.path.join(OUTPUT_DIR, temp)
     os.makedirs(workdir, exist_ok=True)
     os.makedirs(outdir, exist_ok=True)
 
-    # original_path = os.path.join(workdir, "input.png")
-    # mask_path = os.path.join(workdir, "mask.png")
-    original_path = os.path.join(workdir, "image.png")     
+    # 작업 파일 경로
+    original_path = os.path.join(workdir, "image.png")
     mask_path = os.path.join(workdir, "image_mask.png")
 
-
     try:
+        # presigned URL 생성
         presigned_original = create_presigned(image_key)
         presigned_mask = create_presigned(mask_key)
 
+        # 이미지 다운로드
         download_image(presigned_original, original_path, "RGB")
         download_image(presigned_mask, mask_path, "L")
 
-        # lama_python = os.path.abspath("lama_env/Scripts/python.exe")
+        # 실행 환경 설정
         lama_python = sys.executable
         env = os.environ.copy()
         env["PYTHONPATH"] = LAMA_DIR
@@ -111,24 +116,12 @@ def inpaint_image(image_url: str, mask_url: str) -> str:
 
         cmd = [
             lama_python,
-            os.path.join(LAMA_DIR, "bin", "predict.py"),
+            PREDICT_PY,
             f"model.path={MODEL_PATH}",
             f"indir={workdir}",
             f"outdir={outdir}",
-            # "dataset.img_suffix=.png",
         ]
 
-        # result = subprocess.run(
-        #     [lama_python, os.path.join(LAMA_DIR, "bin", "predict.py"),
-        #      f"model.path={MODEL_PATH}",
-        #      f"indir={workdir}",
-        #      f"outdir={outdir}",
-        #      "dataset.img_suffix=.png"],
-        #     stdout=subprocess.PIPE,
-        #     stderr=subprocess.STDOUT,
-        #     text=True,
-        #     env=env
-        # )
         result = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
@@ -137,25 +130,28 @@ def inpaint_image(image_url: str, mask_url: str) -> str:
             env=env
         )
 
+        # 실행 실패 시 에러 출력
         if result.returncode != 0:
-            print("--- LaMa Error Log ---") 
+            print("--- LaMa Error Log ---")
             print(result.stdout)
             raise Exception("LaMa 실행 오류: " + result.stdout)
 
+        # 출력 파일 찾기
         files = [f for f in os.listdir(outdir) if f.endswith(".png")]
         if not files:
             raise Exception("인페인팅 결과 이미지 없음")
 
         output_local = os.path.join(outdir, files[0])
 
+        # S3 업로드
         output_key = f"output/{output_filename}"
         upload_to_s3(output_local, output_key)
 
-
+        # 최종 URL 반환
         return f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{output_key}"
 
     finally:
+        # 필요하면 정리
         # cleanup(workdir)
         # cleanup(outdir)
         pass
-
