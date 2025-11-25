@@ -109,7 +109,7 @@ def inpaint_image(image_url: str, mask_url: str) -> str:
         download_image(presigned_mask, mask_path, "L")
 
         # 실행 환경 설정
-        lama_python = sys.executable
+        lama_python = "/home/ec2-user/lama-server/venv/bin/python"
         env = os.environ.copy()
         env["PYTHONPATH"] = LAMA_DIR
 
