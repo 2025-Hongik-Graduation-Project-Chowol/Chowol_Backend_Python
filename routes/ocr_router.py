@@ -39,6 +39,6 @@ def ocr_download_json():
     return send_file(
         file_obj,
         mimetype="application/json",
-        as_attachment=True,          # ← 이게 있어야 '다운로드'로 동작
-        download_name=filename,      # 브라우저/클라이언트에서 보일 파일 이름
+        as_attachment=True,          
+        download_name=filename,     
     )

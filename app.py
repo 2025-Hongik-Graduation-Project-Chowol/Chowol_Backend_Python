@@ -1,6 +1,7 @@
 from flask import Flask 
 from dotenv import load_dotenv
 import os
+from routes.font_router import font_bp
 load_dotenv()
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "stoked-champion-477005-p3-3051b6933c4f.json"
@@ -18,6 +19,7 @@ app.register_blueprint(translate_bp)
 app.register_blueprint(inpaint_bp)
 app.register_blueprint(reinsert_bp)
 app.register_blueprint(ocr_bp, url_prefix="/api/ocr")
+app.register_blueprint(font_bp, url_prefix="/api/font-recommend")
 
 
 
