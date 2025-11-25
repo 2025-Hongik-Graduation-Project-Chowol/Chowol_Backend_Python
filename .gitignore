@@ -25,3 +25,8 @@ lama/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Model
+font_dataset/
+font_models/
+*.pth
