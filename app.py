@@ -1,4 +1,5 @@
 from flask import Flask 
+from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 from routes.font_router import font_bp
@@ -14,6 +15,18 @@ from routes.ocr_router import ocr_bp
 print("S3_BUCKET =", os.getenv("S3_BUCKET"))
 
 app = Flask(__name__) 
+
+CORS(
+    app,
+    resources={
+        r"/*": {
+            "origins": [
+                "http://localhost:5173",
+                "http://localhost:5174"
+            ]
+        }
+    }
+)
 
 app.register_blueprint(translate_bp) 
 app.register_blueprint(inpaint_bp)
