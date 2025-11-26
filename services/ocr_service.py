@@ -92,41 +92,88 @@ def _append_manual_text_to_json(image_url: str, item: dict):
     upload_json_to_s3(data, json_key)
 
 
+# def process_ocr_select(projectId, image_url, bbox):
+#     """
+#     사용자가 지정한 네 꼭짓점(bbox: [{x,y} * 4]) 영역에 대해 OCR 재수행.
+#     - 해당 영역을 crop해서 Vision OCR 실행
+#     - 전체 텍스트(annotations[0])를 사용
+#     - 결과 { text, bbox(4점) } 반환
+#     - 그리고 S3의 기존 JSON에 manualTexts로 append
+#     """
+#     filename = extract_filename(image_url)
+
+#     # 1) S3에서 원본 이미지 가져오기
+#     response = s3.get_object(
+#         Bucket=BUCKET_NAME,
+#         Key=f"images/{filename}"
+#     )
+#     img_bytes = response["Body"].read()
+
+#     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+
+#     # bbox: [ {x,y}, {x,y}, {x,y}, {x,y} ] 라고 가정
+#     xs = [p["x"] for p in bbox]
+#     ys = [p["y"] for p in bbox]
+
+#     min_x, max_x = min(xs), max(xs)
+#     min_y, max_y = min(ys), max(ys)
+
+#     # 2) 선택 영역 crop (rectangle)
+#     left   = min_x
+#     upper  = min_y
+#     right  = max_x
+#     lower  = max_y
+
+#     cropped = img.crop((left, upper, right, lower))
+
+#     # 3) Vision OCR 실행 (crop된 이미지 기준)
+#     buf = io.BytesIO()
+#     cropped.save(buf, format="PNG")
+#     buf.seek(0)
+
+#     image = vision.Image(content=buf.getvalue())
+#     ocr_response = vision_client.text_detection(image=image)
+#     annotations = ocr_response.text_annotations
+
+#     if annotations:
+#         selected_text = annotations[0].description.strip()
+#     else:
+#         selected_text = ""
+
+#     # 결과 아이템
+#     result_item = {
+#         "text": selected_text,
+#         "bbox": bbox   # 4개의 꼭짓점 그대로 저장
+#     }
+
+#     # 4) 기존 JSON에 manualTexts로 추가
+#     _append_manual_text_to_json(image_url, result_item)
+
+#     # 5) API 응답은 스펙대로
+#     return result_item
+
 def process_ocr_select(projectId, image_url, bbox):
-    """
-    사용자가 지정한 네 꼭짓점(bbox: [{x,y} * 4]) 영역에 대해 OCR 재수행.
-    - 해당 영역을 crop해서 Vision OCR 실행
-    - 전체 텍스트(annotations[0])를 사용
-    - 결과 { text, bbox(4점) } 반환
-    - 그리고 S3의 기존 JSON에 manualTexts로 append
-    """
     filename = extract_filename(image_url)
 
-    # 1) S3에서 원본 이미지 가져오기
+    # --- 1) S3 이미지 다운로드 ---
     response = s3.get_object(
         Bucket=BUCKET_NAME,
         Key=f"images/{filename}"
     )
     img_bytes = response["Body"].read()
-
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
-    # bbox: [ {x,y}, {x,y}, {x,y}, {x,y} ] 라고 가정
+    # --- 2) bbox 계산 ---
     xs = [p["x"] for p in bbox]
     ys = [p["y"] for p in bbox]
 
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
 
-    # 2) 선택 영역 crop (rectangle)
-    left   = min_x
-    upper  = min_y
-    right  = max_x
-    lower  = max_y
+    # crop rectangle
+    cropped = img.crop((min_x, min_y, max_x, max_y))
 
-    cropped = img.crop((left, upper, right, lower))
-
-    # 3) Vision OCR 실행 (crop된 이미지 기준)
+    # --- 3) Vision OCR 실행 ---
     buf = io.BytesIO()
     cropped.save(buf, format="PNG")
     buf.seek(0)
@@ -135,21 +182,51 @@ def process_ocr_select(projectId, image_url, bbox):
     ocr_response = vision_client.text_detection(image=image)
     annotations = ocr_response.text_annotations
 
-    if annotations:
-        selected_text = annotations[0].description.strip()
-    else:
-        selected_text = ""
+    selected_text = annotations[0].description.strip() if annotations else ""
 
     # 결과 아이템
     result_item = {
         "text": selected_text,
-        "bbox": bbox   # 4개의 꼭짓점 그대로 저장
+        "bbox": bbox
     }
 
-    # 4) 기존 JSON에 manualTexts로 추가
+    # --- 4) JSON에 manualTexts 추가 ---
     _append_manual_text_to_json(image_url, result_item)
 
-    # 5) API 응답은 스펙대로
+
+    # ============================================================
+    # 5) ★ 기존 마스크에 '선택 bbox 마스크' 추가하는 핵심 패치 부분 ★
+    # ============================================================
+    try:
+        mask_key = f"mask/{filename}_mask.png"
+
+        # (1) 기존 마스크 다운로드
+        mask_obj = s3.get_object(Bucket=BUCKET_NAME, Key=mask_key)
+        mask_bytes = mask_obj["Body"].read()
+        mask_img = Image.open(io.BytesIO(mask_bytes)).convert("L")
+
+        # (2) 선택 bbox를 흰색(255)로 채우기
+        draw = ImageDraw.Draw(mask_img)
+        draw.rectangle([min_x, min_y, max_x, max_y], fill=255)
+
+        # (3) 수정된 마스크 다시 S3 업로드
+        out_buf = io.BytesIO()
+        mask_img.save(out_buf, format="PNG")
+        out_buf.seek(0)
+
+        s3.put_object(
+            Bucket=BUCKET_NAME,
+            Key=mask_key,
+            Body=out_buf.getvalue(),
+            ContentType="image/png"
+        )
+
+    except Exception as e:
+        print("선택 마스크 처리 오류:", e)
+    # ============================================================
+
+
+    # --- 6) API 스펙대로 리턴 ---
     return result_item
 
 
