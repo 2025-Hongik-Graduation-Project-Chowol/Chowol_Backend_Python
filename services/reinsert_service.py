@@ -1,5 +1,3 @@
-
-
 import boto3
 import json
 import os
@@ -146,6 +144,53 @@ def generate_boxes_only(ocr_json_url, translated_json_url):
         boxes.append({
             "id": str(uuid.uuid4()),
             "original_text": original,
+            "translated_text": translated_text,
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+            "angle": angle,
+            "fontSize": font_size,
+            "color": "#000000"
+        })
+
+    manual_items = ocr.get("manualTexts", [])
+    manual_index = 0  # 실제 번역 index 맞추기 위해 필요
+
+    for item in manual_items:
+        manual_text = (item.get("text") or "").strip()
+        bbox = item.get("bbox", [])
+
+        # 빈 문자열이면 skip
+        if not manual_text:
+            continue
+
+        # 번역 index = auto_count + manual_index
+        translated_idx = count + manual_index
+        if translated_idx < len(translated):
+            translated_text = translated[translated_idx]["translated"]
+        else:
+            translated_text = manual_text  # 혹시 번역이 없으면 원본 유지
+
+        manual_index += 1  # 다음 manualTexts 라인으로 진행
+
+        # bbox → x/y/width/height 계산
+        xs = [p["x"] for p in bbox if "x" in p]
+        ys = [p["y"] for p in bbox if "y" in p]
+        if not xs or not ys:
+            continue
+
+        x = min(xs)
+        y = min(ys)
+        width = max(xs) - min(xs)
+        height = max(ys) - min(ys)
+
+        angle = 0  # manualTexts는 모두 직사각형
+        font_size = max(12, int(height * 0.9))
+
+        boxes.append({
+            "id": str(uuid.uuid4()),
+            "original_text": manual_text,
             "translated_text": translated_text,
             "x": x,
             "y": y,
