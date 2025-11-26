@@ -15,6 +15,7 @@ def process_translation(body):
 
     print(source)
     print (target)
+
     if source == target:
         if source == "ko":
             target = "en"
@@ -24,6 +25,13 @@ def process_translation(body):
     print (target)
 
     lines = extract_lines_from_ocr(full_json)
+
+    manuals = full_json.get("manualTexts", [])
+    for item in manuals:
+        text = (item.get("text") or "").strip()
+        if text:        # 빈 문자열은 제외
+            lines.append(text)
+
     if len(lines) == 0:
         return {"message": "줄 추출 실패"}
 
