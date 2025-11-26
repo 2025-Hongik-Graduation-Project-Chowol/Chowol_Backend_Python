@@ -11,6 +11,7 @@ from routes.translate_router import translate_bp
 from routes.inpaint_router import inpaint_bp
 from routes.reinsert_router import reinsert_bp
 from routes.ocr_router import ocr_bp
+from routes.prefix_router import signed_bp
 
 print("S3_BUCKET =", os.getenv("S3_BUCKET"))
 
@@ -33,6 +34,7 @@ app.register_blueprint(inpaint_bp)
 app.register_blueprint(reinsert_bp)
 app.register_blueprint(ocr_bp, url_prefix="/api/ocr")
 app.register_blueprint(font_bp, url_prefix="/api/font-recommend")
+app.register_blueprint(signed_bp)
 
 
 
